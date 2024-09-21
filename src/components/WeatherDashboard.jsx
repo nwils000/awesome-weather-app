@@ -1,83 +1,301 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import '../styles/WeatherDashboard.css';
+import { Line, Bar } from 'react-chartjs-2';
+
 import {
-  fetchWeatherByCoords,
-  fetchCoordsByZip,
+  Chart as ChartJS,
+  LineElement,
+  BarElement,
+  PointElement,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Filler,
+  Chart,
+} from 'chart.js';
+
+ChartJS.register(
+  LineElement,
+  BarElement,
+  PointElement,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+import {
   fetchCoordsByName,
+  fetchCoordsByZip,
+  fetchThreeHourForecast,
+  fetchCurrentWeather,
+  fetchUVIndex,
 } from '../api/weatherService';
 
-const WeatherApp = () => {
-  const [location, setLocation] = useState('');
-  const [data, setData] = useState({});
-  const [error, setError] = useState('');
+const WeatherDashboard = () => {
+  const [locationInput, setLocationInput] = useState('');
+  const [locationList, setLocationList] = useState([]);
+  const [currentWeather, setCurrentWeather] = useState(null);
+  const [dayWeatherData, setDayWeatherData] = useState([]);
+  const [fiveDayForecast, setFiveDayForecast] = useState([]);
+  const [uvIndex, setUvIndex] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [weatherType, setWeatherType] = useState('home');
+  const [middayForecast, setMiddayForecast] = useState([]);
 
-  const handleLocationInput = (event) => {
-    setLocation(event.target.value);
-  };
+  const getWeatherData = async () => {
+    if (locationInput.trim() === '') return;
 
-  const getLocationAndWeather = async () => {
-    if (!location) return;
+    // Reset old data
+    setDayWeatherData([]);
+    setFiveDayForecast([]);
+    setCurrentWeather(null);
+    setUvIndex(null);
+    setErrorMsg('');
+    setLocationList([]);
 
-    try {
-      let weatherData;
-      if (isNaN(location)) {
-        const coords = await fetchCoordsByName(location);
-        weatherData = await fetchWeatherByCoords(coords.lat, coords.lon);
-      } else {
-        const coords = await fetchCoordsByZip(location);
-        weatherData = await fetchWeatherByCoords(coords.lat, coords.lon);
+    if (isNaN(locationInput)) {
+      // City name search
+      try {
+        const results = await fetchCoordsByName(locationInput);
+        if (results.length === 0) {
+          setErrorMsg('No locations found.');
+          return;
+        } else if (results.length === 1) {
+          const loc = results[0];
+          setLocationList(results);
+          await fetchWeather(loc);
+        } else {
+          setLocationList(results);
+        }
+      } catch (error) {
+        console.error(error);
+        setErrorMsg("Couldn't find the city. Please check the spelling.");
       }
-      setData(weatherData);
-      setError('');
-    } catch (error) {
-      console.error(error);
-      setError('Unable to access weather data for your location.');
-      setData({});
+    } else {
+      // ZIP code search
+      try {
+        const results = await fetchCoordsByZip(locationInput);
+        setLocationList([results]);
+        const loc = results;
+        await fetchWeather(loc);
+      } catch (error) {
+        console.error(error);
+        setErrorMsg('Invalid ZIP code. Please try again.');
+      }
     }
   };
 
-  const fetchCurrentLocationWeather = () => {
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      try {
-        const weatherData = await fetchWeatherByCoords(
-          position.coords.latitude,
-          position.coords.longitude
-        );
-        setData(weatherData);
-        setError('');
-      } catch (error) {
-        console.error(error);
-        setError('Unable to access weather data for your location.');
-        setData({});
-      }
-    });
+  const fetchWeather = async (location) => {
+    try {
+      const [currentData, forecastData, uvData] = await Promise.all([
+        fetchCurrentWeather(location.lat, location.lon),
+        fetchThreeHourForecast(location.lat, location.lon),
+        fetchUVIndex(location.lat, location.lon),
+      ]);
+
+      setCurrentWeather(currentData);
+      setUvIndex(uvData);
+      setDayWeatherData(forecastData.list.slice(0, 8)); // Next 24 hours
+      setFiveDayForecast(forecastData.list.slice(0, 40)); // Next 5 days
+      setErrorMsg('');
+
+      const currentWeatherType = currentData.weather[0].main.toLowerCase();
+      setWeatherType(currentWeatherType);
+    } catch (error) {
+      console.error(error);
+      setErrorMsg('Error fetching weather data.');
+      setDayWeatherData([]);
+      setFiveDayForecast([]);
+      setCurrentWeather(null);
+      setUvIndex(null);
+    }
+  };
+  Chart.defaults.color = 'rgb(255, 255, 255)';
+
+  const dayChart = {
+    labels: dayWeatherData.map((item) =>
+      new Date(item.dt * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    ),
+    datasets: [
+      {
+        label: 'Temperature (°F)',
+        data: dayWeatherData.map((item) => item.main.temp),
+        borderColor: '#c12029',
+        backgroundColor: 'rgb(193, 32, 41, 0.2)',
+        tension: 0.4,
+        fill: true,
+      },
+    ],
   };
 
+  const humidityChart = {
+    labels: dayWeatherData.map((item) =>
+      new Date(item.dt * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    ),
+    datasets: [
+      {
+        label: 'Humidity (%)',
+        data: dayWeatherData.map((item) => item.main.humidity),
+        borderColor: '#c12029',
+        backgroundColor: 'rgb(193, 32, 41)',
+        fill: true,
+      },
+    ],
+  };
+
+  const windChart = {
+    labels: dayWeatherData.map((item) =>
+      new Date(item.dt * 1000).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    ),
+    datasets: [
+      {
+        label: 'Wind Speed (mph)',
+        data: dayWeatherData.map((item) => item.wind.speed),
+        borderColor: '#c12029',
+        backgroundColor: 'rgb(193, 32, 41, 0.2)',
+        tension: 0.4,
+        fill: true,
+      },
+    ],
+  };
+
+  useEffect(() => {
+    setMiddayForecast(
+      fiveDayForecast.filter((item) => {
+        const date = new Date(item.dt * 1000);
+        return date.getUTCHours() === 18;
+      })
+    );
+  }, [fiveDayForecast]);
+
   return (
-    <div>
-      <h1>Weather Finder</h1>
-      <input
-        type="text"
-        value={location}
-        onChange={handleLocationInput}
-        placeholder="Enter city name or zip code"
-      />
-      <button onClick={getLocationAndWeather}>Get Weather</button>
-      <button onClick={fetchCurrentLocationWeather}>
-        Use Current Location
-      </button>
-      {error && <p className="error-message">{error}</p>}
-      {data.main && (
-        <div>
-          <p>
-            Temperature: {(((data.main.temp - 273.15) * 9) / 5 + 32).toFixed(2)}
-            °F
-          </p>
-          <p>Weather: {data.weather[0].description}</p>
-          <p>Humidity: {data.main.humidity}%</p>
+    <div className={`weather-app ${weatherType}`}>
+      <header className="header">
+        <img
+          src="https://awesomeinc.org/static/c91728047cb3a40d4900ddd021304a80/6330c/ainc-15-Full-Color-Horizontal.png"
+          alt=""
+        />
+        <h1>Awesome Weather</h1>
+        <div className="spacer"></div>
+      </header>
+      <div className="input-container">
+        <input
+          type="text"
+          className="location-input"
+          value={locationInput}
+          onChange={(e) => setLocationInput(e.target.value)}
+          placeholder="Enter city name or ZIP code"
+        />
+        <button className="fetch-button" onClick={getWeatherData}>
+          Get Weather
+        </button>
+      </div>
+      {errorMsg && <p className="error-message">{errorMsg}</p>}
+
+      {locationList.length > 1 && (
+        <select
+          className="location-select"
+          onChange={(e) => fetchWeather(locationList[e.target.value])}
+          defaultValue=""
+        >
+          <option value="" disabled>
+            Choose a location
+          </option>
+          {locationList.map((loc, index) => (
+            <option key={index} value={index}>
+              {loc.name}
+              {loc.state ? `, ${loc.state}` : ''}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {currentWeather && (
+        <div className="weather-cards">
+          <div className="card current-weather">
+            <h2>
+              {currentWeather.name}
+              {currentWeather.sys.country
+                ? `, ${currentWeather.sys.country}`
+                : ''}
+            </h2>
+            <div className="temp-icon-wrapper">
+              <p className="temperature">
+                {Math.round(currentWeather.main.temp)}°F
+              </p>
+              <img
+                src={`https://openweathermap.org/img/wn/${currentWeather.weather[0].icon}@2x.png`}
+                alt={currentWeather.weather[0].description}
+              />
+            </div>
+            <p className="weather-description">
+              {currentWeather.weather[0].description}
+            </p>
+          </div>
+
+          <div className="card today-highlights">
+            <h2>Today&apos;s Highlights</h2>
+            <p>UV Index: {uvIndex}</p>
+            <p>Wind Speed: {currentWeather.wind.speed} mph</p>
+            <p>Humidity: {currentWeather.main.humidity}%</p>
+            <div className="chart-container">
+              <h3>Temperature Variation</h3>
+              <Line data={dayChart} options={{ responsive: true }} />
+            </div>
+            <div className="chart-container">
+              <h3>Wind Speed</h3>
+              <Line data={windChart} options={{ responsive: true }} />
+            </div>
+            <div className="chart-container">
+              <h3>Humidity Levels</h3>
+              <Bar data={humidityChart} options={{ responsive: true }} />
+            </div>
+          </div>
+
+          <div className="card forecast">
+            <h2>5-Day Forecast</h2>
+            {middayForecast && middayForecast.length > 0 && (
+              <ul className="forecast-list">
+                {middayForecast.map((item, index) => (
+                  <li key={index}>
+                    <p>
+                      {new Date(item.dt * 1000).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </p>
+                    <p>
+                      {new Date(item.dt * 1000).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                    <img
+                      src={`https://openweathermap.org/img/wn/${item.weather[0].icon}@2x.png`}
+                      alt={item.weather[0].description}
+                    />
+                    <p>{Math.round(item.main.temp)}°F</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 };
 
-export default WeatherApp;
+export default WeatherDashboard;
