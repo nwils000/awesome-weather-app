@@ -150,6 +150,10 @@
   margin-top: 50px;
 }
 
+.chart-container:last-of-type {
+  margin-bottom: 50px;
+}
+
 .chart-container canvas {
   max-height: 100%;
 }
