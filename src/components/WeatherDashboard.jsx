@@ -242,9 +242,14 @@ const WeatherDashboard = () => {
       {currentWeather && (
         <div className="weather-cards">
           <div className="card current-weather">
-            <h2>
-              {selectedLocation.name}, {selectedLocation.state}
-            </h2>
+            {selectedLocation.state ? (
+              <h2>
+                {selectedLocation.name}, {selectedLocation.state}
+              </h2>
+            ) : (
+              <h2>{selectedLocation.name}</h2>
+            )}
+
             <div className="temp-icon-wrapper">
               <p className="temperature">
                 {Math.round(currentWeather.main.temp)}°F
