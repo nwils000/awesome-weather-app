@@ -44,15 +44,22 @@ const WeatherDashboard = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [weatherType, setWeatherType] = useState('home');
   const [middayForecast, setMiddayForecast] = useState([]);
+  const [selectedLocation, setSelectedLocation] = useState('');
 
-  const getWeatherData = async () => {
-    if (locationInput.trim() === '') return;
-
-    // Reset old data
+  const resetData = () => {
     setDayWeatherData([]);
     setFiveDayForecast([]);
     setCurrentWeather(null);
     setUvIndex(null);
+    setErrorMsg('');
+    setLocationList([]);
+    setWeatherType('home');
+    setLocationInput('');
+  };
+
+  // Fetches teh options for locations based on the user input
+  const getWeatherData = async () => {
+    if (locationInput.trim() === '') return;
     setErrorMsg('');
     setLocationList([]);
 
@@ -90,12 +97,14 @@ const WeatherDashboard = () => {
 
   const fetchWeather = async (location) => {
     try {
-      const [currentData, forecastData, uvData] = await Promise.all([
-        fetchCurrentWeather(location.lat, location.lon),
-        fetchThreeHourForecast(location.lat, location.lon),
-        fetchUVIndex(location.lat, location.lon),
-      ]);
-
+      // Fetches different types of weather data
+      const currentData = await fetchCurrentWeather(location.lat, location.lon);
+      const forecastData = await fetchThreeHourForecast(
+        location.lat,
+        location.lon
+      );
+      const uvData = await fetchUVIndex(location.lat, location.lon);
+      setSelectedLocation(location);
       setCurrentWeather(currentData);
       setUvIndex(uvData);
       setDayWeatherData(forecastData.list.slice(0, 8)); // Next 24 hours
@@ -113,8 +122,9 @@ const WeatherDashboard = () => {
       setUvIndex(null);
     }
   };
-  Chart.defaults.color = 'rgb(255, 255, 255)';
 
+  // Chart objects
+  Chart.defaults.color = 'rgb(255, 255, 255)';
   const dayChart = {
     labels: dayWeatherData.map((item) =>
       new Date(item.dt * 1000).toLocaleTimeString([], {
@@ -171,6 +181,7 @@ const WeatherDashboard = () => {
     ],
   };
 
+  // Extract one hour for each day
   useEffect(() => {
     setMiddayForecast(
       fiveDayForecast.filter((item) => {
@@ -186,6 +197,7 @@ const WeatherDashboard = () => {
         <img
           src="https://awesomeinc.org/static/c91728047cb3a40d4900ddd021304a80/6330c/ainc-15-Full-Color-Horizontal.png"
           alt=""
+          onClick={resetData}
         />
         <h1>Awesome Weather</h1>
         <div className="spacer"></div>
@@ -196,6 +208,11 @@ const WeatherDashboard = () => {
           className="location-input"
           value={locationInput}
           onChange={(e) => setLocationInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              getWeatherData(e.target.value);
+            }
+          }}
           placeholder="Enter city name or ZIP code"
         />
         <button className="fetch-button" onClick={getWeatherData}>
@@ -226,10 +243,7 @@ const WeatherDashboard = () => {
         <div className="weather-cards">
           <div className="card current-weather">
             <h2>
-              {currentWeather.name}
-              {currentWeather.sys.country
-                ? `, ${currentWeather.sys.country}`
-                : ''}
+              {selectedLocation.name}, {selectedLocation.state}
             </h2>
             <div className="temp-icon-wrapper">
               <p className="temperature">
@@ -252,15 +266,24 @@ const WeatherDashboard = () => {
             <p>Humidity: {currentWeather.main.humidity}%</p>
             <div className="chart-container">
               <h3>Temperature Variation</h3>
-              <Line data={dayChart} options={{ responsive: true }} />
+              <Line
+                data={dayChart}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
             </div>
             <div className="chart-container">
               <h3>Wind Speed</h3>
-              <Line data={windChart} options={{ responsive: true }} />
+              <Line
+                data={windChart}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
             </div>
             <div className="chart-container">
               <h3>Humidity Levels</h3>
-              <Bar data={humidityChart} options={{ responsive: true }} />
+              <Bar
+                data={humidityChart}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
             </div>
           </div>
 
@@ -278,7 +301,7 @@ const WeatherDashboard = () => {
                     </p>
                     <p>
                       {new Date(item.dt * 1000).toLocaleTimeString([], {
-                        hour: '2-digit',
+                        hour: 'numeric',
                         minute: '2-digit',
                       })}
                     </p>
